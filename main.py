@@ -20,6 +20,15 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row  # Позволяет работать с результатами запроса как с dict
     return conn
 
+# Функция для загрузки всех кандидатов из базы данных
+def load_candidates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM nominants")
+    candidates = cursor.fetchall()
+    conn.close()
+    return candidates
+
 # Функция для добавления эксперта в базу данных
 def add_expert(user_id, username, name, profile_picture=None):
     conn = get_db_connection()
@@ -114,7 +123,6 @@ async def start(update: Update, context: CallbackContext):
     # Отправляем сообщение с кнопками
     await update.message.reply_text("Добро пожаловать! Выберите действие:", reply_markup=reply_markup)
 
-
 # Команда для начала голосования
 async def vote(update: Update, context: CallbackContext):
     user = update.callback_query.from_user  # Используем from_user из callback_query
@@ -149,17 +157,7 @@ async def vote(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.callback_query.edit_message_text("Выберите кандидата:", reply_markup=reply_markup)
 
-
-# Функция для загрузки всех кандидатов из базы данных
-def load_candidates():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM nominants")
-    candidates = cursor.fetchall()
-    conn.close()
-    return candidates
-
-# Обработка выбора кнопки
+# Обработка выбора кандидата
 async def button(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
@@ -206,6 +204,15 @@ async def receive_rating(update: Update, context: CallbackContext):
             # Добавляем или обновляем голос в базе данных
             message = add_or_update_vote(expert_username, nominant_name, rating)
             await update.message.reply_text(message)
+
+            # После того как голос сохранен, показываем кнопки для дальнейших действий
+            keyboard = [
+                [InlineKeyboardButton("Проголосовать", callback_data="vote")],
+                [InlineKeyboardButton("Мои голоса", callback_data="my_votes")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Выберите действие:", reply_markup=reply_markup)
+
         else:
             await update.message.reply_text("Пожалуйста, поставьте оценку от 1 до 10.")
     except ValueError:
@@ -229,6 +236,14 @@ async def my_votes(update: Update, context: CallbackContext):
         vote_text += f"{vote['name']} - {vote['rating']} баллов\n"
 
     await update.callback_query.edit_message_text(vote_text)  # Редактируем сообщение, а не отправляем новое
+
+    # Добавим кнопки для дальнейших действий
+    keyboard = [
+        [InlineKeyboardButton("Проголосовать", callback_data="vote")],
+        [InlineKeyboardButton("Мои голоса", callback_data="my_votes")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.message.reply_text("Выберите действие:", reply_markup=reply_markup)
 
 # Основная функция для запуска бота
 def main():
