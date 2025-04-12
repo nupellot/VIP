@@ -4,6 +4,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from dotenv import load_dotenv
 import os
+import requests
 
 # Загружаем переменные окружения из файла .env
 load_dotenv()
@@ -13,6 +14,9 @@ TOKEN = os.getenv('BOT_TOKEN')  # Получаем токен из переме�
 
 # Путь к файлу базы данных SQLite
 DB_FILE = 'voting.db'
+
+# Папка для хранения локальных изображений профиля
+PROFILE_IMAGES_FOLDER = 'profile_images/'
 
 # Функция для подключения к базе данных
 def get_db_connection():
@@ -30,12 +34,13 @@ def load_candidates():
     return candidates
 
 # Функция для добавления эксперта в базу данных
-def add_expert(user_id, username, name, profile_picture=None):
+def add_expert(user_id, username, name, profile_picture_path=None):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Добавляем пользователя, если его нет в базе
-    cursor.execute("INSERT OR IGNORE INTO expert (username, name, profile_picture) VALUES (?, ?, ?)", (username, name, profile_picture))
+    # Добавляем пользователя в таблицу experts, если его нет
+    cursor.execute("INSERT OR IGNORE INTO experts (username, name, profile_picture) VALUES (?, ?, ?)", 
+                   (username, name, profile_picture_path))
     conn.commit()
     conn.close()
 
@@ -45,7 +50,7 @@ def add_or_update_vote(expert_username, nominant_name, rating):
     cursor = conn.cursor()
 
     # Получаем id эксперта
-    cursor.execute("SELECT id FROM expert WHERE username = ?", (expert_username,))
+    cursor.execute("SELECT id FROM experts WHERE username = ?", (expert_username,))
     expert = cursor.fetchone()
     if expert is None:
         print(f"Ошибка: эксперт с никнеймом {expert_username} не найден.")  # Отладочное сообщение
@@ -91,8 +96,8 @@ def get_user_votes(expert_username):
         SELECT nominants.name, votes.rating 
         FROM votes
         JOIN nominants ON votes.nominant_id = nominants.id
-        JOIN expert ON votes.expert_id = expert.id
-        WHERE expert.username = ?
+        JOIN experts ON votes.expert_id = experts.id
+        WHERE experts.username = ?
     """, (expert_username,))
     
     votes = cursor.fetchall()
@@ -103,15 +108,11 @@ def get_user_votes(expert_username):
 async def start(update: Update, context: CallbackContext):
     user = update.message.from_user
     
-    # Получаем фотографию профиля пользователя
-    profile_picture = None
-    photos = await user.get_profile_photos()  # Асинхронно получаем фотографии профиля
-    if photos.total_count > 0:
-        # Сохраняем ID последней фотографии профиля
-        profile_picture = photos.photos[-1][-1].file_id  # Последний фото ID
-    
+    # Получаем фотографию профиля пользователя и сохраняем её локально
+    profile_picture_path = await download_profile_picture(user)
+
     # Добавляем пользователя в базу данных
-    add_expert(user.id, user.username, user.first_name, profile_picture)
+    add_expert(user.id, user.username, user.first_name, profile_picture_path)
 
     # Создаем inline клавиатуру с кнопками /vote и /my_votes
     keyboard = [
@@ -123,6 +124,30 @@ async def start(update: Update, context: CallbackContext):
     # Отправляем сообщение с кнопками
     await update.message.reply_text("Добро пожаловать! Выберите действие:", reply_markup=reply_markup)
 
+# Функция для скачивания самого последнего изображения профиля пользователя
+async def download_profile_picture(user):
+    photos = await user.get_profile_photos()
+    if photos.total_count > 0:
+        # Получаем самое последнее изображение (самое новое)
+        photo = photos.photos[-1][-1]  # Берем последнее изображение из последней группы фотографий
+        file = await photo.get_file()  # Получаем файл фотографии
+        file_path = file.file_path  # Получаем путь к файлу
+
+        # Создаем папку для хранения изображений, если её нет
+        if not os.path.exists(PROFILE_IMAGES_FOLDER):
+            os.makedirs(PROFILE_IMAGES_FOLDER)
+
+        # Формируем имя файла с использованием username
+        file_name = os.path.join(PROFILE_IMAGES_FOLDER, f"{user.username}_profile.jpg")
+
+        # Загружаем изображение и сохраняем его локально
+        image_content = requests.get(file_path).content
+        with open(file_name, 'wb') as file:
+            file.write(image_content)
+        
+        return file_name  # Возвращаем путь к изображению
+    return None
+
 # Команда для начала голосования
 async def vote(update: Update, context: CallbackContext):
     user = update.callback_query.from_user  # Используем from_user из callback_query
@@ -131,18 +156,13 @@ async def vote(update: Update, context: CallbackContext):
     cursor = conn.cursor()
 
     # Проверяем, есть ли пользователь в базе данных
-    cursor.execute("SELECT * FROM expert WHERE username = ?", (user.username,))
+    cursor.execute("SELECT * FROM experts WHERE username = ?", (user.username,))
     existing_user = cursor.fetchone()
 
     if not existing_user:
         # Если пользователя нет в базе, добавляем его
-        profile_picture = None
-        photos = await user.get_profile_photos()
-        if photos.total_count > 0:
-            profile_picture = photos.photos[-1][-1].file_id
-
-        # Добавляем пользователя в базу данных
-        add_expert(user.id, user.username, user.first_name, profile_picture)
+        profile_picture_path = await download_profile_picture(user)
+        add_expert(user.id, user.username, user.first_name, profile_picture_path)
         await update.callback_query.answer("Вы были добавлены в базу данных. Теперь вы можете проголосовать.")
 
     candidates = load_candidates()
