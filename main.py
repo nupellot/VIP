@@ -104,11 +104,20 @@ async def start(update: Update, context: CallbackContext):
     # Добавляем пользователя в базу данных
     add_expert(user.id, user.username, user.first_name, profile_picture)
 
-    await update.message.reply_text("Привет! Используй команду /vote, чтобы проголосовать.")
+    # Создаем inline клавиатуру с кнопками /vote и /my_votes
+    keyboard = [
+        [InlineKeyboardButton("Проголосовать", callback_data="vote")],
+        [InlineKeyboardButton("Мои голоса", callback_data="my_votes")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Отправляем сообщение с кнопками
+    await update.message.reply_text("Добро пожаловать! Выберите действие:", reply_markup=reply_markup)
+
 
 # Команда для начала голосования
 async def vote(update: Update, context: CallbackContext):
-    user = update.message.from_user
+    user = update.callback_query.from_user  # Используем from_user из callback_query
     # Проверка наличия пользователя в базе данных
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -126,11 +135,11 @@ async def vote(update: Update, context: CallbackContext):
 
         # Добавляем пользователя в базу данных
         add_expert(user.id, user.username, user.first_name, profile_picture)
-        await update.message.reply_text("Вы были добавлены в базу данных. Теперь вы можете проголосовать.")
+        await update.callback_query.answer("Вы были добавлены в базу данных. Теперь вы можете проголосовать.")
 
     candidates = load_candidates()
     if not candidates:
-        await update.message.reply_text("Нет доступных кандидатов для голосования.")
+        await update.callback_query.answer("Нет доступных кандидатов для голосования.")
         return
 
     keyboard = [
@@ -138,7 +147,8 @@ async def vote(update: Update, context: CallbackContext):
         for candidate in candidates
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите кандидата:", reply_markup=reply_markup)
+    await update.callback_query.edit_message_text("Выберите кандидата:", reply_markup=reply_markup)
+
 
 # Функция для загрузки всех кандидатов из базы данных
 def load_candidates():
@@ -149,25 +159,33 @@ def load_candidates():
     conn.close()
     return candidates
 
-# Обработка выбора кандидата
+# Обработка выбора кнопки
 async def button(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
 
-    # Индекс выбранного кандидата
-    nominant_id = int(query.data.split("_")[1])
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM nominants WHERE id = ?", (nominant_id,))
-    nominant = cursor.fetchone()
-    conn.close()
+    if query.data == "my_votes":
+        # Если нажата кнопка "Мои голоса", вызываем команду /my_votes
+        await my_votes(update, context)
+    elif query.data == "vote":
+        # Если нажата кнопка "Проголосовать", вызываем команду /vote
+        await vote(update, context)
 
-    if nominant:
-        context.user_data['nominant_id'] = nominant_id  # Сохраняем id выбранного кандидата
-        context.user_data['nominant_name'] = nominant['name']  # Сохраняем имя кандидата
-        await query.edit_message_text(
-            text=f"Вы выбрали {nominant['name']}.\nПожалуйста, поставьте оценку от 1 до 10."
-        )
+    # Если нажата кнопка кандидата, то начинаем голосование
+    else:
+        nominant_id = int(query.data.split("_")[1])  # Получаем ID кандидата из callback_data
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM nominants WHERE id = ?", (nominant_id,))
+        nominant = cursor.fetchone()
+        conn.close()
+
+        if nominant:
+            context.user_data['nominant_id'] = nominant_id  # Сохраняем id выбранного кандидата
+            context.user_data['nominant_name'] = nominant['name']  # Сохраняем имя кандидата
+            await query.edit_message_text(
+                text=f"Вы выбрали {nominant['name']}.\nПожалуйста, поставьте оценку от 1 до 10."
+            )
 
 # Обработка ввода оценки
 async def receive_rating(update: Update, context: CallbackContext):
@@ -195,14 +213,14 @@ async def receive_rating(update: Update, context: CallbackContext):
 
 # Команда для отображения голосов пользователя
 async def my_votes(update: Update, context: CallbackContext):
-    user = update.message.from_user
+    user = update.callback_query.from_user  # Используем from_user из callback_query
     expert_username = user.username
 
     # Получаем все голоса пользователя
     votes = get_user_votes(expert_username)
 
     if not votes:
-        await update.message.reply_text("У вас нет голосов.")
+        await update.callback_query.answer("У вас нет голосов.")  # Используем callback_query для ответа
         return
 
     # Формируем сообщение с голосами
@@ -210,7 +228,7 @@ async def my_votes(update: Update, context: CallbackContext):
     for vote in votes:
         vote_text += f"{vote['name']} - {vote['rating']} баллов\n"
 
-    await update.message.reply_text(vote_text)
+    await update.callback_query.edit_message_text(vote_text)  # Редактируем сообщение, а не отправляем новое
 
 # Основная функция для запуска бота
 def main():
