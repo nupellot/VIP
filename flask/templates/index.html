@@ -74,22 +74,6 @@
     
     <script>
 $(document).ready(function() {
-    // Инициализация DataTables
-    var table = $('#ratings-table').DataTable({
-        "paging": true,       // Включаем пагинацию
-        "ordering": true,     // Включаем сортировку
-        "info": false,        // Отключаем отображение информации о таблице
-        "searching": false,   // Отключаем поиск
-        "autoWidth": false,   // Отключаем автоширину столбцов
-        "columnDefs": [
-            {
-                "targets": "_all",        // Применяем ко всем столбцам
-                "type": "numeric"         // Обрабатываем все столбцы как числовые
-            }
-        ],
-        "order": []  // Отключаем сортировку по умолчанию
-    });
-
     // Получаем данные через API
     $.getJSON('/api/data', function(data) {
         var experts = data.experts;
@@ -102,25 +86,31 @@ $(document).ready(function() {
             var expertId = vote[0];
             var nominantId = vote[1];
             var rating = vote[2];
-            
-            // Ищем соответствующую ячейку в таблице
-            var cellId = "#rating-" + nominantId + "-" + expertId;
-            $(cellId).text(rating);
+
+            $("#rating-" + nominantId + "-" + expertId).text(rating);
         });
 
         // Заполнение средней оценки и дисперсии для каждого номинанта
         nominants.forEach(function(nominant) {
             var nominantId = nominant[0];
-            var avgRating = nominantStats[nominantId].avg.toFixed(2);  // Средняя оценка
-            var variance = nominantStats[nominantId].variance.toFixed(2);  // Дисперсия
-            
-            // Заполнение данных в таблице
+            var avgRating = nominantStats[nominantId].avg.toFixed(2);
+            var variance = nominantStats[nominantId].variance.toFixed(2);
+
             $("#avg-" + nominantId).text(avgRating);
             $("#variance-" + nominantId).text(variance);
         });
 
-        // Обновление DataTable после изменения данных
-        table.columns.adjust().draw();
+        // Теперь, когда все данные загружены, инициализируем DataTables
+        $('#ratings-table').DataTable({
+            "paging": false,
+            "ordering": true,
+            "info": false,
+            "searching": false,
+            "autoWidth": false,
+            "columnDefs": [
+                { "type": "num", "targets": "_all" }
+            ]
+        });
     });
 });
 
