@@ -4,31 +4,49 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Таблица оценок</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- Подключаем DataTables CSS для стилизации таблицы -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.1/css/jquery.dataTables.min.css">
+    
+    <!-- Подключаем стили для красивой анимации -->
     <style>
-        table {
-            width: 100%;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        table.dataTable {
+            width: 100% !important;
             border-collapse: collapse;
             margin: 20px 0;
         }
-        table, th, td {
-            border: 1px solid black;
+
+        table.dataTable thead {
+            background-color: #f2f2f2;
         }
-        th, td {
-            padding: 10px;
+
+        table.dataTable th, table.dataTable td {
+            padding: 12px;
             text-align: center;
+            border: 1px solid #ddd;
+        }
+
+        table.dataTable th {
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <h1>Таблица оценок</h1>
-    <table id="ratings-table">
+    <table id="ratings-table" class="display">
         <thead>
             <tr>
                 <th>Номинант / Эксперт</th>
                 {% for expert in experts %}
                     <th>{{ expert[1] }}</th>
                 {% endfor %}
+                <th>Средняя оценка</th>
+                <th>Дисперсия</th>
             </tr>
         </thead>
         <tbody>
@@ -40,12 +58,74 @@
                             <!-- Оценки будут вставляться через JS -->
                         </td>
                     {% endfor %}
+                    <td id="avg-{{ nominant[0] }}"></td>
+                    <td id="variance-{{ nominant[0] }}"></td>
                 </tr>
             {% endfor %}
         </tbody>
     </table>
 
+    <!-- Подключаем jQuery и DataTables JS -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.1/js/jquery.dataTables.min.js"></script>
+    
+    <!-- Наш кастомный JS -->
     <script src="static/js/scripts.js"></script>
+    
+    <script>
+$(document).ready(function() {
+    // Инициализация DataTables
+    var table = $('#ratings-table').DataTable({
+        "paging": true,       // Включаем пагинацию
+        "ordering": true,     // Включаем сортировку
+        "info": false,        // Отключаем отображение информации о таблице
+        "searching": false,   // Отключаем поиск
+        "autoWidth": false,   // Отключаем автоширину столбцов
+        "columnDefs": [
+            {
+                "targets": "_all",        // Применяем ко всем столбцам
+                "type": "numeric"         // Обрабатываем все столбцы как числовые
+            }
+        ],
+        "order": []  // Отключаем сортировку по умолчанию
+    });
+
+    // Получаем данные через API
+    $.getJSON('/api/data', function(data) {
+        var experts = data.experts;
+        var nominants = data.nominants;
+        var votes = data.votes;
+        var nominantStats = data.nominant_stats;
+
+        // Заполнение оценок в таблице
+        votes.forEach(function(vote) {
+            var expertId = vote[0];
+            var nominantId = vote[1];
+            var rating = vote[2];
+            
+            // Ищем соответствующую ячейку в таблице
+            var cellId = "#rating-" + nominantId + "-" + expertId;
+            $(cellId).text(rating);
+        });
+
+        // Заполнение средней оценки и дисперсии для каждого номинанта
+        nominants.forEach(function(nominant) {
+            var nominantId = nominant[0];
+            var avgRating = nominantStats[nominantId].avg.toFixed(2);  // Средняя оценка
+            var variance = nominantStats[nominantId].variance.toFixed(2);  // Дисперсия
+            
+            // Заполнение данных в таблице
+            $("#avg-" + nominantId).text(avgRating);
+            $("#variance-" + nominantId).text(variance);
+        });
+
+        // Обновление DataTable после изменения данных
+        table.columns.adjust().draw();
+    });
+});
+
+
+    </script>
+    
 </body>
 </html>
