@@ -10,7 +10,6 @@
     
     <!-- Подключаем стили для красивой анимации -->
     <style>
-@import url('https://fonts.googleapis.com/css2?family=Lobster&family=Montserrat+Alternates:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
@@ -35,21 +34,16 @@
         table.dataTable th {
             cursor: pointer;
         }
-        .lobster {
-            font-family: "Lobster", serif;
-            font-size: 3rem;
-            margin: auto;
-        }
     </style>
 </head>
 <body>
-    <h1 class="lobster">Великое Исследование Пельменей</h1>
+    <h1>Таблица оценок</h1>
     <table id="ratings-table" class="display">
         <thead>
             <tr>
                 <th>Номинант / Эксперт</th>
                 {% for expert in experts %}
-                    <th>{{ expert[1] }}</th>
+                    <th>{{ expert[1] }}</th>  <!-- Используем secret_name -->
                 {% endfor %}
                 <th>Средняя оценка</th>
                 <th>Дисперсия</th>
@@ -57,112 +51,92 @@
         </thead>
         <tbody>
             {% for nominant in nominants %}
-                <tr>
-                    <td>{{ nominant[1] }}</td>
-                    {% for expert in experts %}
-                        <td id="rating-{{ nominant[0] }}-{{ expert[0] }}">
-                            <!-- Оценки будут вставляться через JS -->
-                        </td>
-                    {% endfor %}
-                    <td id="avg-{{ nominant[0] }}"></td>
-                    <td id="variance-{{ nominant[0] }}"></td>
-                </tr>
-            {% endfor %}
+            <tr>
+                <td>{{ nominant[1] }}</td>
+                {% for expert in experts %}
+                    <td id="rating-{{ nominant[0] }}-{{ expert[0] }}">
+                        <!-- Оценки будут заполняться через JS -->
+                    </td>
+                {% endfor %}
+                <td id="avg-{{ nominant[0] }}"></td>
+                <td id="variance-{{ nominant[0] }}"></td>
+            </tr>
+        {% endfor %}
+        
         </tbody>
     </table>
 
     <!-- Подключаем jQuery и DataTables JS -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.1/js/jquery.dataTables.min.js"></script>
-
-
+    
     <!-- Наш кастомный JS -->
     <script src="static/js/scripts.js"></script>
     
     <script>
 $(document).ready(function() {
-    // Функция обновления данных таблицы
-    function updateTableData() {
-        $.getJSON('/api/data', function(data) {
-            var experts = data.experts;
-            var nominants = data.nominants;
-            var votes = data.votes;
-            var nominantStats = data.nominant_stats;
+    $.getJSON('/api/data', function(data) {
+        var experts = data.experts;
+        var nominants = data.nominants;
+        var votes = data.votes;
+        var nominantStats = data.nominant_stats;
 
-            // Обновляем оценки и цвет ячеек
-            votes.forEach(function(vote) {
-                var expertId = vote[0];
-                var nominantId = vote[1];
-                var rating = vote[2];
+        // Заполнение оценок в таблице
+        votes.forEach(function(vote) {
+            var expertId = vote[0];
+            var nominantId = vote[1];
+            var rating = vote[2];
 
-                var cellId = "#rating-" + nominantId + "-" + expertId;
-                $(cellId).text(rating);
+            var cellId = "#rating-" + nominantId + "-" + expertId;
+            $(cellId).text(rating);
 
-                // Меняем фон ячейки в зависимости от оценки
-                var color = getCellColor(rating);
-                $(cellId).css("background-color", color);
-            });
-
-            // Обновляем столбцы для средней оценки и дисперсии
-            nominants.forEach(function(nominant) {
-                var nominantId = nominant[0];
-                $("#avg-" + nominantId).text(nominantStats[nominantId].avg.toFixed(2));
-                $("#variance-" + nominantId).text(nominantStats[nominantId].variance.toFixed(2));
-            });
+            // Изменяем фон в зависимости от значения
+            var color = getCellColor(rating);
+            $(cellId).css("background-color", color);
         });
-    }
 
-    // Инициализируем DataTables (пагинация отключена)
-    if (!$.fn.DataTable.isDataTable('#ratings-table')) {
-        $('#ratings-table').DataTable({
-            "paging": false,       // Отключаем пагинацию
-            "ordering": true,
-            "info": false,
-            "searching": false,
-            "autoWidth": false,
-            "columnDefs": [
-                { "type": "string", "targets": [0] },    // Первый столбец сортируем как текст
-                { "type": "num", "targets": "_all" }       // Остальные столбцы сортируем как числа
-            ]
+        // Заполнение средней оценки и дисперсии для каждого номинанта
+        nominants.forEach(function(nominant) {
+            var nominantId = nominant[0];
+            var avgRating = nominantStats[nominantId].avg.toFixed(2);
+            var variance = nominantStats[nominantId].variance.toFixed(2);
+
+            $("#avg-" + nominantId).text(avgRating);
+            $("#variance-" + nominantId).text(variance);
         });
-    }
 
-    // Выполняем начальное обновление данных
-    updateTableData();
-    // Обновляем таблицу каждые 2 секунды (2000 миллисекунд)
-    setInterval(updateTableData, 2000);
+        // Инициализация DataTable
+        if (!$.fn.DataTable.isDataTable('#ratings-table')) {
+            $('#ratings-table').DataTable({
+                "paging": false,       // Отключаем пагинацию
+                "ordering": true,
+                "info": false,
+                "searching": false,
+                "autoWidth": false,
+                "columnDefs": [
+                    { "type": "num", "targets": [1, 2, 3, 4] },
+                    { "type": "string", "targets": [0] }
+                ]
+            });
+        }
+    });
 
-
-    // Функция для определения цвета фона ячейки в зависимости от оценки
+    // Функция для получения цвета фона ячейки на основе значения
     function getCellColor(rating) {
-        rating = Number(rating);
         var color;
-
         if (rating >= 6) {
-            // Оценки от 6 до 10 — оттенки зеленого:
-            // Чем выше оценка, тем насыщеннее зелёный (и менее прозрачный)
-            var intensity = (rating - 6) / (10 - 6); // нормализуем: 0 для 6 и 1 для 10
-            // Зеленый: от 100 до 255
-            var green = 100 + intensity * (255 - 100);
-            // Прозрачность: от 0.2 (оценка 6) до 1.0 (оценка 10)
-            var alpha = 0.2 + intensity * 0.8;
-            color = 'rgba(0, ' + Math.round(green) + ', 0, ' + alpha.toFixed(2) + ')';
-        } else {
-            // Оценки от 0 до 5 — оттенки красного:
-            // Чем ниже оценка, тем насыщеннее красный (и менее прозрачный)
-            var intensity = (5 - rating) / 5; // нормализуем: 0 для 5 и 1 для 0
-            // Красный: от 100 до 255
-            var red = 100 + intensity * (255 - 100);
-            // Прозрачность: от 0.2 (оценка 5) до 1.0 (оценка 0)
-            var alpha = 0.2 + intensity * 0.8;
-            color = 'rgba(' + Math.round(red) + ', 0, 0, ' + alpha.toFixed(2) + ')';
+            var greenIntensity = Math.min(255, Math.floor(((rating - 6) / 4) * 255));
+            var alpha = 0.5 + ((rating - 6) / 4) * 0.5;
+            color = `rgba(0, ${greenIntensity}, 0, ${alpha})`;
+        } else if (rating >= 0) {
+            var redIntensity = Math.min(255, Math.floor(((5 - rating) / 5) * 255));
+            var alpha = 0.5 + ((5 - rating) / 5) * 0.5;
+            color = `rgba(${redIntensity}, 0, 0, ${alpha})`;
         }
         return color;
     }
 });
 
-
-        </script>
-        
+    </script>
 </body>
 </html>
