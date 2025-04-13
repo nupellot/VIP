@@ -81,70 +81,82 @@
     
     <script>
 $(document).ready(function() {
-    // Получаем данные через API
-    $.getJSON('/api/data', function(data) {
-        var experts = data.experts;
-        var nominants = data.nominants;
-        var votes = data.votes;
-        var nominantStats = data.nominant_stats;
+    // Функция обновления данных таблицы
+    function updateTableData() {
+        $.getJSON('/api/data', function(data) {
+            var experts = data.experts;
+            var nominants = data.nominants;
+            var votes = data.votes;
+            var nominantStats = data.nominant_stats;
 
-        // Заполнение оценок в таблице
-        votes.forEach(function(vote) {
-            var expertId = vote[0];
-            var nominantId = vote[1];
-            var rating = vote[2];
+            // Обновляем оценки и цвет ячеек
+            votes.forEach(function(vote) {
+                var expertId = vote[0];
+                var nominantId = vote[1];
+                var rating = vote[2];
 
-            // Устанавливаем текст в ячейку
-            var cellId = "#rating-" + nominantId + "-" + expertId;
-            $(cellId).text(rating);
+                var cellId = "#rating-" + nominantId + "-" + expertId;
+                $(cellId).text(rating);
 
-            // Изменяем фон в зависимости от значения
-            var color = getCellColor(rating);
-            $(cellId).css("background-color", color);
-        });
-
-        // Заполнение средней оценки и дисперсии для каждого номинанта
-        nominants.forEach(function(nominant) {
-            var nominantId = nominant[0];
-            var avgRating = nominantStats[nominantId].avg.toFixed(2);
-            var variance = nominantStats[nominantId].variance.toFixed(2);
-
-            $("#avg-" + nominantId).text(avgRating);
-            $("#variance-" + nominantId).text(variance);
-        });
-
-        // Инициализируем DataTable, если он еще не инициализирован
-        if (!$.fn.DataTable.isDataTable('#ratings-table')) {
-            $('#ratings-table').DataTable({
-                "paging": false,       // Отключаем пагинацию
-                "ordering": true,
-                "info": false,
-                "searching": false,
-                "autoWidth": false,
-                "columnDefs": [
-                    { "type": "num", "targets": [1, 2, 3, 4] },  // Устанавливаем числовую сортировку для всех столбцов с оценками
-                    { "type": "string", "targets": [0] }  // Устанавливаем строковую сортировку для первого столбца
-                ]
+                // Меняем фон ячейки в зависимости от оценки
+                var color = getCellColor(rating);
+                $(cellId).css("background-color", color);
             });
-        }
-    });
 
-    // Функция для получения цвета фона ячейки на основе значения
+            // Обновляем столбцы для средней оценки и дисперсии
+            nominants.forEach(function(nominant) {
+                var nominantId = nominant[0];
+                $("#avg-" + nominantId).text(nominantStats[nominantId].avg.toFixed(2));
+                $("#variance-" + nominantId).text(nominantStats[nominantId].variance.toFixed(2));
+            });
+        });
+    }
+
+    // Инициализируем DataTables (пагинация отключена)
+    if (!$.fn.DataTable.isDataTable('#ratings-table')) {
+        $('#ratings-table').DataTable({
+            "paging": false,       // Отключаем пагинацию
+            "ordering": true,
+            "info": false,
+            "searching": false,
+            "autoWidth": false,
+            "columnDefs": [
+                { "type": "string", "targets": [0] },    // Первый столбец сортируем как текст
+                { "type": "num", "targets": "_all" }       // Остальные столбцы сортируем как числа
+            ]
+        });
+    }
+
+    // Выполняем начальное обновление данных
+    updateTableData();
+    // Обновляем таблицу каждые 2 секунды (2000 миллисекунд)
+    setInterval(updateTableData, 2000);
+
+
+    // Функция для определения цвета фона ячейки в зависимости от оценки
     function getCellColor(rating) {
+        rating = Number(rating);
         var color;
 
         if (rating >= 6) {
-            // Зеленые оттенки для оценок от 6 до 10
-            var green = Math.min(255, (rating - 5) * 50); // Чем выше оценка, тем насыщеннее зеленый
-            var alpha = Math.max(0.1, (rating - 5) * 0.2); // Чем выше оценка, тем менее прозрачный
-            color = `rgba(0, 205, 0, ${alpha})`;  // Рgba для управления прозрачностью
-        } else if (rating >= 0) {
-            // Красные оттенки для оценок от 0 до 5
-            var red = Math.min(255, (5 - rating) * 50); // Чем ниже оценка, тем насыщеннее красный
-            var alpha = Math.max(0.1, (7 - rating) * 0.1); // Чем ниже оценка, тем более прозрачный
-            color = `rgba(255, 0, 0, ${alpha})`;  // Рgba для управления прозрачностью
+            // Оценки от 6 до 10 — оттенки зеленого:
+            // Чем выше оценка, тем насыщеннее зелёный (и менее прозрачный)
+            var intensity = (rating - 6) / (10 - 6); // нормализуем: 0 для 6 и 1 для 10
+            // Зеленый: от 100 до 255
+            var green = 100 + intensity * (255 - 100);
+            // Прозрачность: от 0.2 (оценка 6) до 1.0 (оценка 10)
+            var alpha = 0.2 + intensity * 0.8;
+            color = 'rgba(0, ' + Math.round(green) + ', 0, ' + alpha.toFixed(2) + ')';
+        } else {
+            // Оценки от 0 до 5 — оттенки красного:
+            // Чем ниже оценка, тем насыщеннее красный (и менее прозрачный)
+            var intensity = (5 - rating) / 5; // нормализуем: 0 для 5 и 1 для 0
+            // Красный: от 100 до 255
+            var red = 100 + intensity * (255 - 100);
+            // Прозрачность: от 0.2 (оценка 5) до 1.0 (оценка 0)
+            var alpha = 0.2 + intensity * 0.8;
+            color = 'rgba(' + Math.round(red) + ', 0, 0, ' + alpha.toFixed(2) + ')';
         }
-
         return color;
     }
 });
